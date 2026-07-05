@@ -23,7 +23,7 @@ jobs:
           curl -LO https://github.com/theos/sdks/archive/master.zip
           unzip -q master.zip
           mkdir -p $HOME/theos/sdks
-          cp -r sdks-master/*.sdk $HOME/theos/sdks/
+          cp -a sdks-master/iPhoneOS*.sdk $HOME/theos/sdks/ || true
 
       - name: Build package
         run: |
