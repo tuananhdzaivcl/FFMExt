@@ -33,8 +33,20 @@ jobs:
           export THEOS=$HOME/theos
           make package
 
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r .theos/_/Applications/FFMExt.app Payload/
+          zip -r FFMExt.ipa Payload
+
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: FFMExt-deb
           path: packages/*.deb
+
+      - name: Upload ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FFMExt-ipa
+          path: FFMExt.ipa
