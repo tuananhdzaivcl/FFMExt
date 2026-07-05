@@ -1,9 +1,9 @@
 Package: com.ffmax.ffmext
-Name: FFM MáºáºExt
+Name: FFM Ext
 Version: 0.0.1
 Architecture: iphoneos-arm
 Description: An awesome application!
-Maintainer: TuÃáº¥n Anh
-Author: TuÃáº¥n Anh
+Maintainer: Tuan Anh
+Author: Tuan Anh
 Section: Utilities
 Depends: firmware (>= 12.2) | ${LIBSWIFT}
