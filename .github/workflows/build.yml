@@ -26,6 +26,9 @@ jobs:
           cp -a sdks-master/iPhoneOS*.sdk $HOME/theos/sdks/ || true
 
       - name: Build package
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
         run: |
           export THEOS=$HOME/theos
           make package
