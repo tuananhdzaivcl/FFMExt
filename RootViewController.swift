@@ -107,8 +107,15 @@ class RootViewController: UIViewController {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(stackView)
         
+        let scrollTopAnchor: NSLayoutYAxisAnchor
+        if #available(iOS 11.0, *) {
+            scrollTopAnchor = view.safeAreaLayoutGuide.topAnchor
+        } else {
+            scrollTopAnchor = view.topAnchor
+        }
+        
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: scrollTopAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
