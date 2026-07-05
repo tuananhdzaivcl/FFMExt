@@ -1,6 +1,7 @@
 include $(THEOS)/makefiles/common.mk
 
 TARGET = iphone:clang:latest:12.2
+ARCHS = arm64
 INSTALL_TARGET_PROCESSES = FFMMExt
 
 APPLICATION_NAME = FFMMExt
