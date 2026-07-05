@@ -36,7 +36,7 @@ jobs:
       - name: Package IPA
         run: |
           mkdir -p Payload
-          cp -r .theos/_/Applications/FFMExt.app Payload/
+          cp -r .theos/_/Applications/FFMMExt.app Payload/
           zip -r FFMExt.ipa Payload
 
       - name: Upload deb artifact
