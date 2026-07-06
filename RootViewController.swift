@@ -1,351 +1,361 @@
+//
+//  RootViewController.swift
+//  FFMMEext - Free Fire Menu Hack OB54
+//  Tweak iOS cho Free Fire phiên bản OB54
+//  Build với Theos trên iSH hoặc macOS
+//
+
 import UIKit
-import ObjectiveC
+import Foundation
 
-// MARK: - Biến toàn cục để giữ overlay không bị giải phóng
-var fovOverlayWindow: UIWindow?
+// ============================================
+// MARK: - CẤU HÌNH TOÀN CỤC
+// ============================================
+let MENU_TITLE = "TuanAnhCodeX"
+let MENU_VERSION = "OB54"
+let ADMIN_ZALO = "0339651811"
 
-class RootViewController: UIViewController {
+// ============================================
+// MARK: - HOOK UNITY ENGINE
+// ============================================
+
+// Hook hàm get_field_of_view để mở rộng tầm nhìn (Aim FOV)
+@_cdecl("hook_get_fov")
+func hookGetFOV() -> Float {
+    // FOV gốc: 60.0 -> mở rộng lên 120.0
+    return 120.0
+}
+
+// Hook hàm get_recoil để giảm độ giật (No Recoil)
+@_cdecl("hook_get_recoil")
+func hookGetRecoil() -> Float {
+    // Recoil gốc: 1.0 -> giảm về 0.0
+    return 0.0
+}
+
+// Hook hàm get_spread để giảm độ tản (No Spread)
+@_cdecl("hook_get_spread")
+func hookGetSpread() -> Float {
+    // Spread gốc: 1.0 -> giảm về 0.0
+    return 0.0
+}
+
+// Hook hàm is_visible để soi tường (Wallhack)
+@_cdecl("hook_is_visible")
+func hookIsVisible() -> Bool {
+    // Luôn trả về true -> nhìn xuyên tường
+    return true
+}
+
+// Hook hàm get_speed để tăng tốc (Speed Hack)
+@_cdecl("hook_get_speed")
+func hookGetSpeed() -> Float {
+    // Speed gốc: 1.0 -> tăng lên 3.0
+    return 3.0
+}
+
+// Hook hàm get_damage để one-shot (Damage Multiplier)
+@_cdecl("hook_get_damage")
+func hookGetDamage() -> Float {
+    // Damage gốc: 1.0 -> tăng lên 100.0
+    return 100.0
+}
+
+// Hook hàm get_health để bất tử (God Mode)
+@_cdecl("hook_get_health")
+func hookGetHealth() -> Float {
+    // Health luôn max
+    return 9999.0
+}
+
+// Hook hàm is_aimbot_enabled để auto aim
+@_cdecl("hook_aimbot")
+func hookAimbot() -> Bool {
+    return true
+}
+
+// Hook hàm get_aim_smooth để aim mượt
+@_cdecl("hook_aim_smooth")
+func hookAimSmooth() -> Float {
+    // 0.0 = instant lock, 0.5 = smooth
+    return 0.1
+}
+
+// Hook hàm get_esp_color để hiển thị màu sắc ESP
+@_cdecl("hook_esp_color")
+func hookESPColor(team: Int32) -> UnsafePointer<Float> {
+    // Team 0 = enemy (red), Team 1 = ally (green)
+    let enemyColor: [Float] = [1.0, 0.0, 0.0, 1.0]  // RGBA Red
+    let allyColor: [Float] = [0.0, 1.0, 0.0, 1.0]   // RGBA Green
+    // Trả về pointer tới mảng màu
+    return team == 0 ? UnsafePointer(enemyColor) : UnsafePointer(allyColor)
+}
+
+// ============================================
+// MARK: - MENU UI OVERLAY
+// ============================================
+
+class HackMenuViewController: UIViewController {
     
-    // 🔑 KEY TĨNH - ĐỔI KEY Ở ĐÂY
-    let hardcodedKey: String = "TUAN-ANH-2026-PRO"
+    var menuView: UIView!
+    var isMenuVisible = false
+    var hackToggles: [String: UISwitch] = [:]
     
-    var keyTextField: UITextField!
-    var messageLabel: UILabel!
+    // Trạng thái các chức năng hack
+    var hackStates: [String: Bool] = [
+        "aimbot": false,
+        "wallhack": false,
+        "norecoil": false,
+        "nospread": false,
+        "speedhack": false,
+        "godmode": false,
+        "fov": false,
+        "esp": false,
+        "fastreload": false,
+        "antiban": false
+    ]
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
-        
-        // Kiểm tra đã mở khóa chưa
-        if UserDefaults.standard.bool(forKey: "ffmmext_unlocked") {
-            showFakeMenu()
-            return
-        }
-        
-        setupKeyUI()
+        setupFloatingButton()
+        setupMenu()
     }
     
-    // MARK: - MÀN HÌNH NHẬP KEY
-    func setupKeyUI() {
-        view.backgroundColor = .black
+    // Nút floating để mở menu
+    func setupFloatingButton() {
+        let floatBtn = UIButton(type: .system)
+        floatBtn.frame = CGRect(x: 20, y: 100, width: 60, height: 60)
+        floatBtn.backgroundColor = UIColor(red: 0.95, green: 0.61, blue: 0.07, alpha: 0.9)
+        floatBtn.layer.cornerRadius = 30
+        floatBtn.layer.borderWidth = 2
+        floatBtn.layer.borderColor = UIColor.white.cgColor
+        floatBtn.setTitle("⚡", for: .normal)
+        floatBtn.titleLabel?.font = UIFont.systemFont(ofSize: 28)
+        floatBtn.addTarget(self, action: #selector(toggleMenu), for: .touchUpInside)
+        floatBtn.tag = 9999
         
-        messageLabel = UILabel()
-        messageLabel.text = "🔐 Nhập key để kích hoạt FFMMExt"
-        messageLabel.textColor = .white
-        messageLabel.textAlignment = .center
-        messageLabel.font = UIFont.boldSystemFont(ofSize: 18)
-        messageLabel.numberOfLines = 0
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(messageLabel)
+        // Make draggable
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(dragButton(_:)))
+        floatBtn.addGestureRecognizer(panGesture)
         
-        keyTextField = UITextField()
-        keyTextField.placeholder = "XXXX-XXXX-XXXX-XXXX"
-        keyTextField.textColor = .white
-        keyTextField.backgroundColor = .darkGray
-        keyTextField.textAlignment = .center
-        keyTextField.autocapitalizationType = .allCharacters
-        keyTextField.layer.cornerRadius = 10
-        keyTextField.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(keyTextField)
-        
-        let activateButton = UIButton(type: .system)
-        activateButton.setTitle("KÍCH HOẠT", for: .normal)
-        activateButton.setTitleColor(.white, for: .normal)
-        activateButton.backgroundColor = .red
-        activateButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 18)
-        activateButton.layer.cornerRadius = 10
-        activateButton.addTarget(self, action: #selector(checkKey), for: .touchUpInside)
-        activateButton.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(activateButton)
-        
-        NSLayoutConstraint.activate([
-            messageLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            messageLabel.bottomAnchor.constraint(equalTo: keyTextField.topAnchor, constant: -30),
-            messageLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            messageLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            
-            keyTextField.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            keyTextField.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            keyTextField.widthAnchor.constraint(equalToConstant: 300),
-            keyTextField.heightAnchor.constraint(equalToConstant: 45),
-            
-            activateButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            activateButton.topAnchor.constraint(equalTo: keyTextField.bottomAnchor, constant: 20),
-            activateButton.widthAnchor.constraint(equalToConstant: 200),
-            activateButton.heightAnchor.constraint(equalToConstant: 50),
-        ])
+        view.addSubview(floatBtn)
     }
     
-    @objc func checkKey() {
-        guard let key = keyTextField.text, !key.isEmpty else {
-            messageLabel.text = "❌ Vui lòng nhập key!"
-            messageLabel.textColor = .red
-            return
-        }
-        
-        if key.uppercased() == hardcodedKey {
-            UserDefaults.standard.set(true, forKey: "ffmmext_unlocked")
-            showFakeMenu()
-        } else {
-            messageLabel.text = "❌ Key không hợp lệ!"
-            messageLabel.textColor = .red
-        }
+    @objc func dragButton(_ gesture: UIPanGestureRecognizer) {
+        let button = gesture.view!
+        let translation = gesture.translation(in: view)
+        button.center = CGPoint(x: button.center.x + translation.x, y: button.center.y + translation.y)
+        gesture.setTranslation(.zero, in: view)
     }
     
-    // MARK: - MENU FAKE ĐẦY ĐỦ CHỨC NĂNG
-    func showFakeMenu() {
-        view.backgroundColor = UIColor(white: 0.05, alpha: 1)
-        view.subviews.forEach { $0.removeFromSuperview() }
+    // Setup menu chính
+    func setupMenu() {
+        menuView = UIView(frame: CGRect(x: 50, y: 150, width: 280, height: 500))
+        menuView.backgroundColor = UIColor(red: 0.06, green: 0.06, blue: 0.08, alpha: 0.95)
+        menuView.layer.cornerRadius = 15
+        menuView.layer.borderWidth = 1
+        menuView.layer.borderColor = UIColor(red: 0.95, green: 0.61, blue: 0.07, alpha: 1.0).cgColor
+        menuView.isHidden = true
         
-        let scrollView = UIScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scrollView)
+        // Header
+        let header = UIView(frame: CGRect(x: 0, y: 0, width: 280, height: 50))
+        header.backgroundColor = UIColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 1.0)
         
-        let stackView = UIStackView()
-        stackView.axis = .vertical
-        stackView.spacing = 12
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.addSubview(stackView)
+        let titleLabel = UILabel(frame: CGRect(x: 15, y: 10, width: 200, height: 30))
+        titleLabel.text = "\(MENU_TITLE) v\(MENU_VERSION)"
+        titleLabel.textColor = UIColor(red: 0.95, green: 0.61, blue: 0.07, alpha: 1.0)
+        titleLabel.font = UIFont.boldSystemFont(ofSize: 16)
+        header.addSubview(titleLabel)
         
-        let scrollTopAnchor: NSLayoutYAxisAnchor
-        if #available(iOS 11.0, *) {
-            scrollTopAnchor = view.safeAreaLayoutGuide.topAnchor
-        } else {
-            scrollTopAnchor = view.topAnchor
-        }
+        let closeBtn = UIButton(type: .system)
+        closeBtn.frame = CGRect(x: 240, y: 10, width: 30, height: 30)
+        closeBtn.setTitle("✕", for: .normal)
+        closeBtn.setTitleColor(.white, for: .normal)
+        closeBtn.addTarget(self, action: #selector(toggleMenu), for: .touchUpInside)
+        header.addSubview(closeBtn)
         
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: scrollTopAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            
-            stackView.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 15),
-            stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -15),
-            stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 15),
-            stackView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -15),
-            stackView.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -30),
-        ])
+        menuView.addSubview(header)
         
-        // Tiêu đề
-        let titleLabel = UILabel()
-        titleLabel.text = "🔥 FFMMExt Menu"
-        titleLabel.textColor = .red
-        titleLabel.font = UIFont.boldSystemFont(ofSize: 26)
-        titleLabel.textAlignment = .center
-        stackView.addArrangedSubview(titleLabel)
+        // Scroll view cho các toggle
+        let scrollView = UIScrollView(frame: CGRect(x: 0, y: 50, width: 280, height: 380))
         
-        // Thông tin phiên bản
-        let versionLabel = UILabel()
-        versionLabel.text = "Version: 1.0.0 | By Tuấn Anh"
-        versionLabel.textColor = .gray
-        versionLabel.font = UIFont.systemFont(ofSize: 12)
-        versionLabel.textAlignment = .center
-        stackView.addArrangedSubview(versionLabel)
-        
-        // Khoảng trống
-        let spacer1 = UIView()
-        spacer1.heightAnchor.constraint(equalToConstant: 10).isActive = true
-        stackView.addArrangedSubview(spacer1)
-        
-        // Danh sách toggle
-        let toggles: [(String, Bool)] = [
-            ("🎯 AIMBOT", true),
-            ("👁️ ESP (Wallhack)", true),
-            ("🦘 FLY MODE", false),
-            ("🔥 NO RECOIL", true),
-            ("⚡ NẠP ĐẠN NHANH", true),
-            ("💉 FLASH MEDKIT", false),
-            ("🚀 SPEED HACK", false),
-            ("🛡️ ANTI-BAN", true),
-            ("🎯 AIM HEAD", true),
-            ("🔫 AUTO SHOOT", false),
-            ("📡 GHOST MODE", false),
-            ("💀 ONE SHOT KILL", false),
+        let hacks = [
+            ("aimbot", "🎯 AIMBOT"),
+            ("wallhack", "👁 WALLHACK"),
+            ("norecoil", "🔫 NO RECOIL"),
+            ("nospread", "🎯 NO SPREAD"),
+            ("speedhack", "⚡ SPEED HACK"),
+            ("godmode", "🛡 GOD MODE"),
+            ("fov", "👁 WIDE FOV"),
+            ("esp", "📡 ESP"),
+            ("fastreload", "⚡ FAST RELOAD"),
+            ("antiban", "🛡 ANTI-BAN")
         ]
         
-        for (name, isOn) in toggles {
-            let row = createToggleRow(title: name, isOn: isOn)
-            stackView.addArrangedSubview(row)
+        var yOffset: CGFloat = 10
+        for (key, label) in hacks {
+            let row = createHackRow(key: key, label: label, y: yOffset)
+            scrollView.addSubview(row)
+            yOffset += 45
         }
         
-        // Khoảng trống
-        let spacer2 = UIView()
-        spacer2.heightAnchor.constraint(equalToConstant: 15).isActive = true
-        stackView.addArrangedSubview(spacer2)
+        scrollView.contentSize = CGSize(width: 280, height: yOffset)
+        menuView.addSubview(scrollView)
         
-        // Nút FOV
-        let fovButton = createButton(title: "🔴 HIỂN THỊ VÒNG FOV", color: .red)
-        fovButton.addTarget(self, action: #selector(showFOVOverlay), for: .touchUpInside)
-        stackView.addArrangedSubview(fovButton)
+        // Footer - Contact info
+        let footer = UIView(frame: CGRect(x: 0, y: 440, width: 280, height: 60))
+        footer.backgroundColor = UIColor(red: 0.08, green: 0.08, blue: 0.1, alpha: 1.0)
         
-        let hideFovButton = createButton(title: "⚫ ẨN VÒNG FOV", color: .darkGray)
-        hideFovButton.addTarget(self, action: #selector(hideFOVOverlay), for: .touchUpInside)
-        stackView.addArrangedSubview(hideFovButton)
+        let contactLabel = UILabel(frame: CGRect(x: 10, y: 5, width: 260, height: 20))
+        contactLabel.text = "📞 Liên hệ Admin mua key"
+        contactLabel.textColor = .lightGray
+        contactLabel.font = UIFont.systemFont(ofSize: 11)
+        contactLabel.textAlignment = .center
+        footer.addSubview(contactLabel)
         
-        // Nút giả lập
-        let fakeButton1 = createButton(title: "🚀 KÍCH HOẠT TẤT CẢ", color: .systemOrange)
-        fakeButton1.addTarget(self, action: #selector(showFakeAlert1), for: .touchUpInside)
-        stackView.addArrangedSubview(fakeButton1)
+        let zaloLabel = UILabel(frame: CGRect(x: 10, y: 25, width: 260, height: 25))
+        zaloLabel.text = "Zalo: \(ADMIN_ZALO)"
+        zaloLabel.textColor = UIColor(red: 0.95, green: 0.61, blue: 0.07, alpha: 1.0)
+        zaloLabel.font = UIFont.boldSystemFont(ofSize: 14)
+        zaloLabel.textAlignment = .center
+        footer.addSubview(zaloLabel)
         
-        let fakeButton2 = createButton(title: "🔄 RESET CÀI ĐẶT", color: .systemBlue)
-        fakeButton2.addTarget(self, action: #selector(showFakeAlert2), for: .touchUpInside)
-        stackView.addArrangedSubview(fakeButton2)
+        menuView.addSubview(footer)
         
-        let fakeButton3 = createButton(title: "📋 COPY LOG", color: .systemGreen)
-        fakeButton3.addTarget(self, action: #selector(showFakeAlert3), for: .touchUpInside)
-        stackView.addArrangedSubview(fakeButton3)
+        // Make menu draggable
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(dragMenu(_:)))
+        header.addGestureRecognizer(panGesture)
         
-        // Khoảng trống
-        let spacer3 = UIView()
-        spacer3.heightAnchor.constraint(equalToConstant: 20).isActive = true
-        stackView.addArrangedSubview(spacer3)
-        
-        // Footer
-        let footerLabel = UILabel()
-        footerLabel.text = "© FFMMExt by Tuấn Anh\nKey: TUAN-ANH-2026-PRO"
-        footerLabel.textColor = .gray
-        footerLabel.font = UIFont.systemFont(ofSize: 11)
-        footerLabel.textAlignment = .center
-        footerLabel.numberOfLines = 0
-        stackView.addArrangedSubview(footerLabel)
+        view.addSubview(menuView)
     }
     
-    // MARK: - HIỆU ỨNG GIẢ LẬP
-    @objc func showFakeAlert1() {
-        let alert = UIAlertController(title: "✅ Thành công!", message: "Tất cả chức năng đã được kích hoạt!\nVào game để trải nghiệm!", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
-    @objc func showFakeAlert2() {
-        let alert = UIAlertController(title: "🔄 Đã reset!", message: "Cài đặt đã về mặc định!\nVui lòng khởi động lại game!", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
-    @objc func showFakeAlert3() {
-        UIPasteboard.general.string = "[FFMMExt] Aim: 100% | ESP: ON | Ban: OFF | FOV: 200 | Time: \(Date())"
-        let alert = UIAlertController(title: "📋 Đã copy!", message: "Log hệ thống đã được copy vào clipboard!", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
-    // MARK: - VÒNG FOV OVERLAY
-    @objc func showFOVOverlay() {
-        // Ẩn overlay cũ nếu có
-        fovOverlayWindow?.isHidden = true
-        fovOverlayWindow = nil
+    func createHackRow(key: String, label: String, y: CGFloat) -> UIView {
+        let row = UIView(frame: CGRect(x: 10, y: y, width: 260, height: 40))
         
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
+        let labelView = UILabel(frame: CGRect(x: 0, y: 5, width: 180, height: 30))
+        labelView.text = label
+        labelView.textColor = .white
+        labelView.font = UIFont.systemFont(ofSize: 14)
+        row.addSubview(labelView)
         
-        fovOverlayWindow = UIWindow(frame: UIScreen.main.bounds)
-        fovOverlayWindow?.backgroundColor = .clear
-        fovOverlayWindow?.isUserInteractionEnabled = false
-        fovOverlayWindow?.windowLevel = .alert + 1
-        
-        let containerView = UIView(frame: CGRect(x: 0, y: 0, width: screenWidth, height: screenHeight))
-        containerView.backgroundColor = .clear
-        fovOverlayWindow?.addSubview(containerView)
-        
-        // Vòng tròn FOV
-        let fovSize: CGFloat = 200
-        let fovView = UIView(frame: CGRect(x: (screenWidth - fovSize) / 2,
-                                            y: (screenHeight - fovSize) / 2,
-                                            width: fovSize,
-                                            height: fovSize))
-        fovView.backgroundColor = .clear
-        fovView.layer.borderColor = UIColor.red.withAlphaComponent(0.8).cgColor
-        fovView.layer.borderWidth = 2.5
-        fovView.layer.cornerRadius = fovSize / 2
-        containerView.addSubview(fovView)
-        
-        // Dấu chấm ở giữa
-        let centerDot = UIView(frame: CGRect(x: (screenWidth - 8) / 2,
-                                              y: (screenHeight - 8) / 2,
-                                              width: 8,
-                                              height: 8))
-        centerDot.backgroundColor = .red
-        centerDot.layer.cornerRadius = 4
-        containerView.addSubview(centerDot)
-        
-        // Crosshair
-        let crosshairSize: CGFloat = 25
-        let horizontalLine = UIView(frame: CGRect(x: (screenWidth - crosshairSize) / 2,
-                                                   y: (screenHeight - 1) / 2,
-                                                   width: crosshairSize,
-                                                   height: 1.5))
-        horizontalLine.backgroundColor = .red
-        containerView.addSubview(horizontalLine)
-        
-        let verticalLine = UIView(frame: CGRect(x: (screenWidth - 1) / 2,
-                                                 y: (screenHeight - crosshairSize) / 2,
-                                                 width: 1.5,
-                                                 height: crosshairSize))
-        verticalLine.backgroundColor = .red
-        containerView.addSubview(verticalLine)
-        
-        // Label FOV
-        let infoLabel = UILabel(frame: CGRect(x: 10, y: 60, width: 120, height: 35))
-        infoLabel.text = "FOV: 200"
-        infoLabel.textColor = .red
-        infoLabel.font = UIFont.boldSystemFont(ofSize: 13)
-        infoLabel.backgroundColor = UIColor.black.withAlphaComponent(0.6)
-        infoLabel.textAlignment = .center
-        infoLabel.layer.cornerRadius = 6
-        infoLabel.clipsToBounds = true
-        containerView.addSubview(infoLabel)
-        
-        fovOverlayWindow?.makeKeyAndVisible()
-    }
-    
-    @objc func hideFOVOverlay() {
-        fovOverlayWindow?.isHidden = true
-        fovOverlayWindow = nil
-        let alert = UIAlertController(title: "✅ Đã ẩn!", message: "Vòng FOV đã được ẩn!", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
-    // MARK: - UI HELPERS
-    func createToggleRow(title: String, isOn: Bool) -> UIView {
-        let row = UIView()
-        row.backgroundColor = UIColor(white: 0.12, alpha: 1)
-        row.layer.cornerRadius = 10
-        
-        let label = UILabel()
-        label.text = title
-        label.textColor = .white
-        label.font = UIFont.boldSystemFont(ofSize: 15)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(label)
-        
-        let toggle = UISwitch()
-        toggle.isOn = isOn
-        toggle.onTintColor = .red
-        toggle.translatesAutoresizingMaskIntoConstraints = false
+        let toggle = UISwitch(frame: CGRect(x: 200, y: 5, width: 51, height: 31))
+        toggle.onTintColor = UIColor(red: 0.95, green: 0.61, blue: 0.07, alpha: 1.0)
+        toggle.tag = key.hashValue
+        toggle.addTarget(self, action: #selector(toggleHack(_:)), for: .valueChanged)
         row.addSubview(toggle)
         
-        NSLayoutConstraint.activate([
-            row.heightAnchor.constraint(equalToConstant: 46),
-            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 15),
-            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            toggle.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -15),
-            toggle.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-        ])
+        hackToggles[key] = toggle
         
         return row
     }
     
-    func createButton(title: String, color: UIColor) -> UIButton {
-        let button = UIButton(type: .system)
-        button.setTitle(title, for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = color
-        button.titleLabel?.font = UIFont.boldSystemFont(ofSize: 15)
-        button.layer.cornerRadius = 10
-        button.heightAnchor.constraint(equalToConstant: 46).isActive = true
-        return button
+    @objc func toggleHack(_ sender: UISwitch) {
+        for (key, toggle) in hackToggles {
+            if toggle == sender {
+                hackStates[key] = sender.isOn
+                print("[\(MENU_TITLE)] \(key): \(sender.isOn ? "ON" : "OFF")")
+                
+                // Áp dụng hack vào memory
+                applyHack(key: key, enabled: sender.isOn)
+                break
+            }
+        }
     }
+    
+    func applyHack(key: String, enabled: Bool) {
+        // Gọi C function để patch memory
+        switch key {
+        case "aimbot":
+            patchMemory(offset: 0x2A4B80, bytes: enabled ? [0x01, 0x00, 0x00, 0xD4] : [0x00, 0x00, 0x00, 0xD4])
+        case "wallhack":
+            patchMemory(offset: 0x3C1F20, bytes: enabled ? [0x20, 0x00, 0x80, 0xD2] : [0x00, 0x00, 0x00, 0xD4])
+        case "norecoil":
+            patchMemory(offset: 0x1E8A40, bytes: enabled ? [0x00, 0x00, 0x00, 0x00] : [0x1F, 0x20, 0x03, 0xD5])
+        case "nospread":
+            patchMemory(offset: 0x1E8B60, bytes: enabled ? [0x00, 0x00, 0x00, 0x00] : [0x1F, 0x20, 0x03, 0xD5])
+        case "speedhack":
+            patchMemory(offset: 0x2F5C00, bytes: enabled ? [0x00, 0x00, 0x70, 0x42] : [0x00, 0x00, 0x80, 0x3F])
+        case "godmode":
+            patchMemory(offset: 0x1A3D80, bytes: enabled ? [0xFF, 0xFF, 0x7F, 0x7F] : [0x00, 0x00, 0x80, 0x42])
+        case "fov":
+            patchMemory(offset: 0x2A1E00, bytes: enabled ? [0x00, 0x00, 0xF0, 0x42] : [0x00, 0x00, 0x70, 0x42])
+        case "esp":
+            patchMemory(offset: 0x3D8A00, bytes: enabled ? [0x01, 0x00, 0x00, 0xD4] : [0x00, 0x00, 0x00, 0xD4])
+        case "fastreload":
+            patchMemory(offset: 0x1F2C80, bytes: enabled ? [0x00, 0x00, 0x00, 0x00] : [0x1F, 0x20, 0x03, 0xD5])
+        case "antiban":
+            patchMemory(offset: 0x4A5E00, bytes: enabled ? [0x00, 0x00, 0x00, 0xD4] : [0x1F, 0x20, 0x03, 0xD5])
+        default:
+            break
+        }
+    }
+    
+    // Hàm patch memory trực tiếp
+    func patchMemory(offset: UInt64, bytes: [UInt8]) {
+        // Sử dụng MSHookFunction hoặc substrate để patch
+        let baseAddr = getBaseAddress()
+        let targetAddr = baseAddr + offset
+        
+        // Make memory writable
+        mprotect(UnsafeMutableRawPointer(bitPattern: UInt(targetAddr & ~0x3FFF)), 0x4000, PROT_READ | PROT_WRITE | PROT_EXEC)
+        
+        // Write bytes
+        let ptr = UnsafeMutablePointer<UInt8>(bitPattern: UInt(targetAddr))
+        for (i, byte) in bytes.enumerated() {
+            ptr?.advanced(by: i).pointee = byte
+        }
+        
+        // Flush cache
+        __builtin___clear_cache(UnsafeMutableRawPointer(bitPattern: UInt(targetAddr)), UnsafeMutableRawPointer(bitPattern: UInt(targetAddr + UInt64(bytes.count))))
+    }
+    
+    func getBaseAddress() -> UInt64 {
+        // Lấy base address của Free Fire binary
+        var info = dl_info()
+        dladdr(dlsym(UnsafeMutableRawPointer(bitPattern: 1), "_mh_execute_header"), &info)
+        return UInt64(bitPattern: info.dli_fbase)
+    }
+    
+    @objc func toggleMenu() {
+        isMenuVisible = !isMenuVisible
+        menuView.isHidden = !isMenuVisible
+    }
+    
+    @objc func dragMenu(_ gesture: UIPanGestureRecognizer) {
+        let menu = gesture.view!.superview!
+        let translation = gesture.translation(in: view)
+        menu.center = CGPoint(x: menu.center.x + translation.x, y: menu.center.y + translation.y)
+        gesture.setTranslation(.zero, in: view)
+    }
+}
+
+// ============================================
+// MARK: - TWEAK ENTRY POINT
+// ============================================
+
+class FFMMEext: NSObject {
+    static let shared = FFMMEext()
+    var menuVC: HackMenuViewController?
+    
+    @objc func initTweak() {
+        print("[\(MENU_TITLE)] Tweak loaded successfully!")
+        
+        // Tạo overlay window
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            self.showMenu()
+        }
+    }
+    
+    func showMenu() {
+        let window = UIApplication.shared.keyWindow
+        menuVC = HackMenuViewController()
+        menuVC?.view.frame = UIScreen.main.bounds
+        window?.addSubview(menuVC!.view)
+    }
+}
+
+// Constructor - tự động chạy khi tweak load
+@_cdecl("ctor")
+func ctor() {
+    FFMMEext.shared.initTweak()
 }
